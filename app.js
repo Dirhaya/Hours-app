@@ -1,4 +1,4 @@
-import {HOUR,net,duration,validState} from './time.js';
+import {HOUR,net,duration,validState,saveManualShift} from './time.js';
 const $=id=>document.getElementById(id),KEY='hours.simple.v1';let state={theme:'beige',target:40,weekStart:1,shifts:[],active:null},offset=0,editing=null,blocked=false;
 function toast(t){$('toast').textContent=t;$('toast').hidden=false;clearTimeout(toast.id);toast.id=setTimeout(()=>$('toast').hidden=true,4500);}
 try{const raw=localStorage.getItem(KEY);if(raw){const v=JSON.parse(raw);if(!validState(v))throw Error('Invalid stored data');state=v;}}catch{blocked=true;$('storage').textContent='Stored data could not be read. Restore a valid backup in Settings. Existing data has not been overwritten.';}
@@ -24,9 +24,29 @@ function settings(){$('target').value=state.target;$('weekStart').value=state.we
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>$(b.dataset.close).close();for(const b of document.querySelectorAll('.themes button'))b.onclick=guard(()=>{change(()=>state.theme=b.dataset.theme);applyTheme();});
 $('preferences').onsubmit=e=>{e.preventDefault();guard(()=>{change(()=>{state.target=Number($('target').value);state.weekStart=Number($('weekStart').value);offset=0;});$('settings').close();})()};
 function local(t){const d=new Date(t),pad=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());}
-function openEditor(id=null){if(blocked)return toast('Restore a valid backup first.');editing=id;const s=all().find(s=>s.id===id),active=s?.end===null;$('editorTitle').textContent=s?'Edit shift':'Add shift';$('start').value=local(s?s.start:Date.now()-HOUR);$('end').value=local(s?.end??Date.now());$('endField').hidden=active;$('end').required=!active;$('delete').hidden=!s;$('error').textContent='';$('editor').showModal();}
+function openEditor(id=null){
+ if(blocked)return toast('Restore a valid backup first.');
+ editing=id;const s=all().find(s=>s.id===id);
+ $('editorTitle').textContent=s?'Edit shift':'Add shift';
+ $('start').value=local(s?s.start:Date.now());
+ $('end').value=s?.end?local(s.end):'';
+ $('endField').hidden=false;$('end').required=false;
+ $('delete').hidden=!s;$('error').textContent='';$('editor').showModal();
+}
 $('add').onclick=()=>openEditor();$('editActive').onclick=()=>openEditor(state.active?.id);
-$('shiftForm').onsubmit=e=>{e.preventDefault();guard(()=>{const existing=all().find(s=>s.id===editing);let start=+new Date($('start').value),end=existing?.end===null?null:+new Date($('end').value);if(existing&&local(existing.start)===$('start').value)start=existing.start;if(existing?.end&&local(existing.end)===$('end').value)end=existing.end;const candidate=JSON.parse(JSON.stringify(state)),s=[...candidate.shifts,...(candidate.active?[candidate.active]:[])].find(s=>s.id===editing);if(s){s.start=start;s.end=end;}else candidate.shifts.push({id:crypto.randomUUID(),start,end,breaks:[]});if(!validState(candidate)){$('error').textContent='Use past times, clock out after clock in, avoid overlapping shifts, and keep recorded breaks inside the shift.';return;}state=candidate;save();render();$('editor').close();})()};
+$('clearEnd').onclick=()=>{$('end').value='';};
+$('shiftForm').onsubmit=e=>{
+ e.preventDefault();guard(()=>{
+  const existing=all().find(s=>s.id===editing);
+  let start=+new Date($('start').value),end=$('end').value?+new Date($('end').value):null;
+  if(existing&&local(existing.start)===$('start').value)start=existing.start;
+  if(existing?.end&&local(existing.end)===$('end').value)end=existing.end;
+  try{state=saveManualShift(state,{id:editing??crypto.randomUUID(),start,end});}
+  catch(error){$('error').textContent=error.message;return;}
+  if(end===null)offset=0;
+  save();render();$('editor').close();toast(end===null?'Clock-in saved. Your shift is running.':'Shift saved.');
+ })();
+};
 $('delete').onclick=guard(()=>{if(!confirm('Delete this shift? This cannot be undone.'))return;change(()=>{if(state.active?.id===editing)state.active=null;else state.shifts=state.shifts.filter(s=>s.id!==editing);});$('editor').close();});
 $('export').onclick=()=>{if(blocked)return toast('Stored data is unreadable; it has not been overwritten.');const url=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='hours-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);};
 $('import').onclick=()=>$('backupFile').click();$('backupFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>5000000)throw Error();const v=JSON.parse(await f.text());if(!validState(v))throw Error();if(confirm('Replace the shifts and preferences on this device with this backup?')){state=v;blocked=false;save();applyTheme();render();toast('Backup restored.');}}catch{toast('This is not a valid Hours backup. Nothing was changed.');}e.target.value='';};

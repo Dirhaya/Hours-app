@@ -6,6 +6,8 @@ A minimalist, mobile-first personal work-hours tracker. Beige, white and black t
 
 - Clock in/out, unpaid breaks and a timer that survives reopening.
 - Weekly target, live remaining hours, weekly history and daily bars.
+- Add a manual clock-in with no clock-out to keep a shift running.
+- Use Edit times to add a manual clock-out to a running shift.
 - Add, edit and delete shifts; reject overlaps and invalid times.
 - Configurable Monday, Sunday or Saturday week start.
 - JSON backup and restore.
@@ -44,4 +46,4 @@ For releases, bump the CACHE version in sw.js whenever cached files change. The 
 
 ## Project status
 
-Ready to upload and host. All three automated calculation/validation tests pass. JavaScript syntax checks pass. Browser UI checks could not run in the build environment because its browser executable was unavailable. Physical iPhone installation must be verified after deployment; it has not been tested on a physical iPhone here.
+Ready to upload and host. Automated calculation, validation and manual-entry tests pass. JavaScript syntax checks pass. Browser UI checks could not run in the build environment because its browser executable was unavailable. Physical iPhone installation must be verified after deployment; it has not been tested on a physical iPhone here.

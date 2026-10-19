@@ -12,3 +12,19 @@ export function validState(v){
  }
  all.sort((a,b)=>a.start-b.start);return all.every((s,i)=>!i||s.start>=(all[i-1].end??Infinity));
 }
+
+// Apply a manual entry atomically: a failed edit never changes saved shifts.
+export function saveManualShift(state,{id,start,end}){
+ const candidate=JSON.parse(JSON.stringify(state));
+ const existing=[...candidate.shifts,...(candidate.active?[candidate.active]:[])].find(s=>s.id===id);
+ if(end===null&&candidate.active&&candidate.active.id!==id)
+  throw new Error('A shift is already running. Use Edit times on that shift, or clock out first.');
+ const shift=existing??{id,breaks:[]};
+ shift.start=start;shift.end=end;
+ if(end!==null)for(const b of shift.breaks)if(b.end===null)b.end=end;
+ candidate.shifts=candidate.shifts.filter(s=>s.id!==id);
+ if(candidate.active?.id===id)candidate.active=null;
+ if(end===null)candidate.active=shift;else candidate.shifts.push(shift);
+ if(!validState(candidate))throw new Error('Use past times, clock out after clock in, avoid overlapping shifts, and keep recorded breaks inside the shift.');
+ return candidate;
+}
