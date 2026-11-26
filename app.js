@@ -1,4 +1,4 @@
-import {HOUR,net,duration,validState,saveManualShift} from './time.js';
+import {HOUR,net,duration,validState,saveManualShift,weekInsights,workDaysFor} from './time.js';
 const $=id=>document.getElementById(id),KEY='hours.simple.v1';let state={theme:'beige',target:40,weekStart:1,shifts:[],active:null},offset=0,editing=null,blocked=false;
 function toast(t){$('toast').textContent=t;$('toast').hidden=false;clearTimeout(toast.id);toast.id=setTimeout(()=>$('toast').hidden=true,4500);}
 try{const raw=localStorage.getItem(KEY);if(raw){const v=JSON.parse(raw);if(!validState(v))throw Error('Invalid stored data');state=v;}}catch{blocked=true;$('storage').textContent='Stored data could not be read. Restore a valid backup in Settings. Existing data has not been overwritten.';}
@@ -13,16 +13,35 @@ function render(){const now=Date.now(),a=state.active,paused=a?.breaks.some(b=>b
  const [lo,hi]=bounds(),total=(l,h)=>all().reduce((v,s)=>v+net(s,l,h,now),0),worked=total(lo,hi),left=state.target*HOUR-worked;
  $('weekTitle').textContent=offset===0?'This week':offset===-1?'Last week':'Week overview';$('range').textContent=date(lo,{month:'short',day:'numeric'})+' – '+date(hi-1,{month:'short',day:'numeric',year:'numeric'});$('remaining').textContent=duration(Math.abs(left));$('remainingLabel').textContent=left>=0?'left of your target':'over your target';$('weekHint').textContent=left<=0?'Weekly target reached.':a&&offset===0?'Your current shift is included.':'One shift at a time.';$('worked').textContent=duration(worked)+' worked';$('goal').textContent=state.target+'h target';$('progress').value=Math.min(100,worked/(state.target*HOUR)*100);
  const days=Array.from({length:7},(_,i)=>{const d=addDays(lo,i);return {d,v:total(d,addDays(d,1))};}),max=Math.max(8*HOUR,...days.map(x=>x.v));$('days').replaceChildren();for(const {d,v} of days){const el=document.createElement('div');el.className='day'+(new Date(d).toDateString()===new Date(now).toDateString()?' current':'');el.title=date(d,{weekday:'long'})+': '+duration(v);el.innerHTML='<div class="barwrap"><div class="bar" style="height:'+Math.max(4,v/max*45)+'px"></div></div>'+date(d,{weekday:'narrow'});$('days').append(el);}
+ renderInsights(lo,hi,now);
  // Keep the focused shift button stable while the timer ticks.
  const list=all().filter(s=>s.start<hi&&(s.end??now)>lo).sort((a,b)=>b.start-a.start);const signature=JSON.stringify([lo,list.map(s=>[s.id,s.start,s.end,s.breaks,duration(net(s,lo,hi,now))])]);if(render.signature===signature)return;render.signature=signature;$('shifts').replaceChildren();if(!list.length){const e=document.createElement('p');e.className='empty';e.textContent='A fresh week. Clock in, or add a past shift.';$('shifts').append(e);}for(const s of list){const b=document.createElement('button');b.className='shift';const label=document.createElement('span');label.textContent=date(s.start,{month:'short',day:'numeric'})+' · '+time(s.start)+' – '+(s.end?time(s.end):'Now');const small=document.createElement('small');small.textContent=(s.breaks.length?'Unpaid breaks excluded':'No unpaid breaks')+(s.end&&date(s.end)!==date(s.start)?' · Ends '+date(s.end,{month:'short',day:'numeric'}):'');label.append(small);const amount=document.createElement('span');amount.textContent=duration(net(s,lo,hi,now))+' ›';b.append(label,amount);b.onclick=()=>openEditor(s.id);$('shifts').append(b);}}
+// Round estimates up so the displayed finish is never before the exact target.
+function roundedDuration(ms){return duration(Math.ceil(ms/60000)*60000);}
+function renderInsights(lo,hi,now){
+ const insight=weekInsights(state,lo,hi,now);
+ $('dailyAverage').textContent=insight.average===null?'—':duration(Math.round(insight.average/60000)*60000);
+ $('averageNote').textContent=insight.workedDays?`Across ${insight.workedDays} day${insight.workedDays===1?'':'s'} worked${insight.current?' · includes today’s logged time':''}`:'Log a shift to see your average.';
+ $('neededPanel').hidden=!insight.current;$('finishEstimate').hidden=!insight.current;
+ if(!insight.current)return;
+ $('dailyNeeded').textContent=insight.remaining===0?'0h':insight.neededPerDay===null?'—':roundedDuration(insight.neededPerDay);
+ $('neededNote').textContent=insight.remaining===0?'Weekly target reached.':insight.remainingDays?`Across ${insight.remainingDays} workday${insight.remainingDays===1?'':'s'} left${insight.includesToday?', including today':''}.`:'No scheduled workdays left. Edit your workdays in Settings.';
+ $('finishLabel').textContent=state.active&&!insight.paused?'Weekly target · finish at':insight.paused?'Weekly target · if you resume now':'Weekly target · if you start now';
+ if(insight.remaining===0){$('finishTime').textContent='Target reached';$('finishNote').textContent='You have completed your weekly hours.';return;}
+ if(!insight.finishWithinWeek){$('finishTime').textContent='Not enough time this week';$('finishNote').textContent='Even continuous work from now would run past the weekly reset.';return;}
+ const end=Math.ceil(insight.finishAt/60000)*60000;
+ const sameDay=new Date(end).toDateString()===new Date(now).toDateString();
+ $('finishTime').textContent=time(end)+(sameDay?'':' · '+date(end,{weekday:'short',month:'short',day:'numeric'}));
+ $('finishNote').textContent=roundedDuration(insight.remaining)+' left · assumes continuous work from now with no further unpaid breaks. This is your whole weekly target.';
+}
 function change(fn){fn();save();render();}
 $('clockButton').onclick=guard(()=>{if(state.active){$('summary').textContent=duration(net(state.active))+' worked, excluding unpaid breaks. The shift ends when you confirm.';$('finish').showModal();}else change(()=>{state.active={id:crypto.randomUUID(),start:Date.now(),end:null,breaks:[]};offset=0;});});
 $('confirmFinish').onclick=guard(()=>{if(!state.active)return;change(()=>{const a=state.active;a.end=Date.now();for(const b of a.breaks)if(b.end===null)b.end=a.end;state.shifts.push(a);state.active=null;});$('finish').close();toast('Shift saved. You’re off the clock.');});
 $('breakButton').onclick=guard(()=>{if(!state.active)return;change(()=>{const b=state.active.breaks.find(b=>b.end===null);if(b)b.end=Date.now();else state.active.breaks.push({start:Date.now(),end:null});});});
 $('prev').onclick=()=>{offset--;render();};$('next').onclick=()=>{offset++;render();};$('todayButton').onclick=()=>{offset=0;render();window.scrollTo({top:0,behavior:'smooth'});};$('historyButton').onclick=()=>$('shifts').scrollIntoView({behavior:'smooth'});
-function settings(){$('target').value=state.target;$('weekStart').value=state.weekStart;$('settings').showModal();} $('settingsButton').onclick=settings;$('navSettings').onclick=settings;
+function settings(){$('target').value=state.target;$('weekStart').value=state.weekStart;document.querySelectorAll('[name=workDay]').forEach(input=>input.checked=workDaysFor(state).includes(Number(input.value)));$('preferencesError').textContent='';$('settings').showModal();} $('settingsButton').onclick=settings;$('navSettings').onclick=settings;
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>$(b.dataset.close).close();for(const b of document.querySelectorAll('.themes button'))b.onclick=guard(()=>{change(()=>state.theme=b.dataset.theme);applyTheme();});
-$('preferences').onsubmit=e=>{e.preventDefault();guard(()=>{change(()=>{state.target=Number($('target').value);state.weekStart=Number($('weekStart').value);offset=0;});$('settings').close();})()};
+$('preferences').onsubmit=e=>{e.preventDefault();guard(()=>{const selected=[...document.querySelectorAll('[name=workDay]:checked')].map(input=>Number(input.value));if(!selected.length){$('preferencesError').textContent='Choose at least one workday.';return;}change(()=>{state.target=Number($('target').value);state.weekStart=Number($('weekStart').value);state.workDays=selected;offset=0;});$('settings').close();})()};
 function local(t){const d=new Date(t),pad=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());}
 function openEditor(id=null){
  if(blocked)return toast('Restore a valid backup first.');

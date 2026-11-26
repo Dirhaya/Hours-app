@@ -6,6 +6,9 @@ A minimalist, mobile-first personal work-hours tracker. Beige, white and black t
 
 - Clock in/out, unpaid breaks and a timer that survives reopening.
 - Weekly target, live remaining hours, weekly history and daily bars.
+- Average net hours per calendar day with work logged, including the running shift.
+- Remaining hours per remaining scheduled workday (editable in Settings; defaults to Monday–Friday).
+- Weekly-target finish time if you work continuously from now, excluding future unpaid breaks.
 - Add a manual clock-in with no clock-out to keep a shift running.
 - Use Edit times to add a manual clock-out to a running shift.
 - Add, edit and delete shifts; reject overlaps and invalid times.
@@ -47,3 +50,11 @@ For releases, bump the CACHE version in sw.js whenever cached files change. The 
 ## Project status
 
 Ready to upload and host. Automated calculation, validation and manual-entry tests pass. JavaScript syntax checks pass. Browser UI checks could not run in the build environment because its browser executable was unavailable. Physical iPhone installation must be verified after deployment; it has not been tested on a physical iPhone here.
+
+## Daily averages and finish estimate
+
+Daily average so far divides the selected week's net hours by the number of calendar days with positive work time. Multiple shifts on a day count as one day; overnight work is split at local midnight. Today's partial work counts.
+
+Still needed per workday divides remaining weekly hours by the remaining selected workdays, including today if scheduled or a shift is running. If you have already finished today, this figure still assumes you could do more work today when it is scheduled. Adjust workdays in Settings for your schedule. At zero remaining hours it shows target reached; with no remaining workdays it prompts you to edit the schedule.
+
+The finish time is now plus the exact remaining weekly hours, rounded up to the next minute for display. For example, at 10:56 with four hours left, it shows 14:56. It assumes continuous work, not work spread across future days. On a break or off the clock, it is explicitly conditional on resuming or starting now. It includes the date when it crosses midnight, and does not project this week's target past the weekly reset. No actual clock-out is recorded automatically. Existing shifts and old backups remain compatible.
